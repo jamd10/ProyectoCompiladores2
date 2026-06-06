@@ -1,58 +1,86 @@
 package compiler.semantic;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Stack;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
 
 public class SymbolTable {
-    private final Stack<Map<String, SymbolInfo>> scopes;
+    private final List<SymbolEntry> symbols = new ArrayList<>();
+    private final Deque<String> scopeStack = new ArrayDeque<>();
 
     public SymbolTable() {
-        scopes = new Stack<>();
-        enterScope(); // Start with a global scope
+        scopeStack.addLast("global");
     }
 
-    public void enterScope() {
-        scopes.push(new HashMap<>());
+    public void enterScope(String scopeName) {
+        scopeStack.addLast(scopeName);
     }
 
     public void exitScope() {
-        if (!scopes.isEmpty()) {
-            scopes.pop();
+        if (scopeStack.size() > 1) {
+            scopeStack.removeLast();
         }
     }
 
-    public void define(String name, SymbolInfo info) {
-        if (!scopes.isEmpty()) {
-            scopes.peek().put(name, info);
-        }
+    public String getCurrentScope() {
+        return String.join("/", scopeStack);
     }
 
-    public SymbolInfo lookup(String name) {
-        for (int i = scopes.size() - 1; i >= 0; i--) {
-            Map<String, SymbolInfo> scope = scopes.get(i);
-            if (scope.containsKey(name)) {
-                return scope.get(name);
+    public int getCurrentLevel() {
+        return scopeStack.size() - 1;
+    }
+
+    public boolean declare(SymbolEntry entry) {
+        if (isDeclaredInCurrentScope(entry.getId())) {
+            return false;
+        }
+
+        symbols.add(entry);
+        return true;
+    }
+
+    public boolean isDeclaredInCurrentScope(String id) {
+        String currentScope = getCurrentScope();
+
+        for (SymbolEntry entry : symbols) {
+            if (entry.getId().equals(id) && entry.getScope().equals(currentScope)) {
+                return true;
             }
         }
-        return null; // Not found
+
+        return false;
     }
 
-    public static class SymbolInfo {
-        private final String type;
-        private final boolean isFunction;
+    public SymbolEntry lookup(String id) {
+        List<String> scopes = new ArrayList<>(scopeStack);
 
-        public SymbolInfo(String type, boolean isFunction) {
-            this.type = type;
-            this.isFunction = isFunction;
+        for (int i = scopes.size(); i >= 1; i--) {
+            String scope = String.join("/", scopes.subList(0, i));
+
+            for (SymbolEntry entry : symbols) {
+                if (entry.getId().equals(id) && entry.getScope().equals(scope)) {
+                    return entry;
+                }
+            }
         }
 
-        public String getType() {
-            return type;
+        return null;
+    }
+
+    public List<SymbolEntry> getSymbols() {
+        return symbols;
+    }
+
+    public void print() {
+        System.out.println("\n--------------------------------- TABLA DE SIMBOLOS ---------------------------------");
+        System.out.printf("%-15s %-12s %-12s %-25s %-8s %-10s %-20s%n",
+                "ID", "TIPO", "CLASE", "AMBITO", "NIVEL", "LINEA", "FIRMA");
+
+        for (SymbolEntry entry : symbols) {
+            System.out.println(entry);
         }
 
-        public boolean isFunction() {
-            return isFunction;
-        }
+        System.out.println("-------------------------------------------------------------------------------------");
     }
 }
