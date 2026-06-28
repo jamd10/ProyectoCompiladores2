@@ -31,3 +31,11 @@ compileJava {
     dependsOn generateGrammarSource
     options.encoding = 'UTF-8'
 }
+
+// tarea para abrir la interfaz grafica del compilador
+tasks.register('runGui', JavaExec) {
+    group = 'application'
+    description = 'abre la interfaz grafica de Mini-C Compiler Studio'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass.set('compiler.gui.GuiMain')
+}
