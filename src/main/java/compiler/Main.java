@@ -31,15 +31,25 @@ public class Main {
         }
 
         if (hasArg(args, "--test")) {
-            runTests();
+            boolean allPassed = runTests();
+            System.exit(allPassed ? 0 : 1);
             return;
         }
 
-        String file = args[0];
+        String file = firstNonFlag(args);
+        if (file == null) {
+            System.out.println("Error: no se indico un archivo .mc de entrada.\n");
+            printUsage();
+            System.exit(2);
+            return;
+        }
+
         CompilerOptions opt = CompilerOptions.from(args);
 
         CompilationResult result = analyze(file, opt);
         printSummary(result);
+
+        System.exit(result.isSuccess() ? 0 : 1);
     }
 
     // ================= ANALISIS =================
@@ -60,7 +70,7 @@ public class Main {
 
             if (!r.lexicalErrors.isEmpty()) {
                 r.lexicalSuccess = false;
-                printErrors("ERRORES LEXICOS", r.lexicalErrors);
+                if (!opt.quiet) printErrors("ERRORES LEXICOS", r.lexicalErrors);
                 return r;
             }
             r.lexicalSuccess = true;
@@ -76,7 +86,7 @@ public class Main {
             if (parserErrors.hasErrors()) {
                 r.syntaxErrors.addAll(parserErrors.getErrors());
                 r.syntaxSuccess = false;
-                printErrors("ERRORES SINTACTICOS", r.syntaxErrors);
+                if (!opt.quiet) printErrors("ERRORES SINTACTICOS", r.syntaxErrors);
                 return r;
             }
 
@@ -109,7 +119,7 @@ public class Main {
                 st.getSymbolTable().print();
             }
 
-            if (!r.symbolErrors.isEmpty()) {
+            if (!r.symbolErrors.isEmpty() && !opt.quiet) {
                 printErrors("ERRORES DE SIMBOLOS", r.symbolErrors);
             }
 
@@ -212,10 +222,10 @@ public class Main {
 
     // ================= TESTS =================
 
-    private static void runTests() {
+    private static boolean runTests() {
         System.out.println("\n=== TESTS ===");
 
-        CompilerOptions opt = CompilerOptions.none();
+        CompilerOptions opt = CompilerOptions.quiet();
 
         int ok = 0, fail = 0;
 
@@ -234,6 +244,8 @@ public class Main {
 
         System.out.println("\nOK: " + ok);
         System.out.println("FAIL: " + fail);
+
+        return fail == 0;
     }
 
     // ================= UTILS =================
@@ -243,22 +255,42 @@ public class Main {
         return false;
     }
 
-    private static SyntaxErrorListener attach(BaseRecognizer r) {
-        SyntaxErrorListener l = new SyntaxErrorListener();
-        r.removeErrorListeners();
-        r.addErrorListener(l);
-        return l;
+    /** Devuelve el primer argumento que no sea una opcion (no empieza con --), o null. */
+    private static String firstNonFlag(String[] args) {
+        for (String a : args) {
+            if (!a.startsWith("--")) return a;
+        }
+        return null;
+    }
+
+    private static SyntaxErrorListener attachErrors(Recognizer<?, ?> recognizer) {
+        SyntaxErrorListener listener = new SyntaxErrorListener();
+        recognizer.removeErrorListeners();
+        recognizer.addErrorListener(listener);
+        return listener;
     }
 
     private static void printUsage() {
-        System.out.println("Uso: java Main <archivo.mc> [opciones]");
-        System.out.println("--tokens --tree --ast --symbols --all --test");
+        System.out.println("Uso: java compiler.Main <archivo.mc> [opciones]");
+        System.out.println();
+        System.out.println("Opciones:");
+        System.out.println("  --tokens            Muestra la tabla de tokens");
+        System.out.println("  --tree              Muestra el parse tree");
+        System.out.println("  --ast               Muestra el AST");
+        System.out.println("  --symbols           Muestra la tabla de simbolos");
+        System.out.println("  --lexical-summary   Muestra el resumen lexico");
+        System.out.println("  --syntax-summary    Muestra el resumen sintactico");
+        System.out.println("  --all               Activa todas las salidas");
+        System.out.println("  --test              Ejecuta la bateria de pruebas");
+        System.out.println();
+        System.out.println("Sin opciones se muestran tokens, AST y simbolos.");
     }
 
     // ================= OPTIONS =================
 
     private static class CompilerOptions {
         boolean showTokens, showTree, showAst, showSymbols, showLexicalSummary, showSyntaxSummary;
+        boolean quiet;
 
         static CompilerOptions from(String[] args) {
             CompilerOptions o = new CompilerOptions();
@@ -280,8 +312,11 @@ public class Main {
             return o;
         }
 
-        static CompilerOptions none() {
-            return new CompilerOptions();
+        /** Opciones para tests: sin salida de debug y sin imprimir errores. */
+        static CompilerOptions quiet() {
+            CompilerOptions o = new CompilerOptions();
+            o.quiet = true;
+            return o;
         }
     }
 
@@ -299,6 +334,13 @@ public class Main {
 
         CompilationResult(String filePath) {
             this.filePath = filePath;
+        }
+
+        boolean isSuccess() {
+            return readErrors.isEmpty()
+                    && lexicalSuccess
+                    && syntaxSuccess
+                    && symbolErrors.isEmpty();
         }
     }
 }
