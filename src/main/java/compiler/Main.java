@@ -6,17 +6,14 @@ import compiler.ast.AstPrinterVisitor;
 import compiler.parser.MiniCLexer;
 import compiler.parser.MiniCParser;
 import compiler.semantic.SymbolTableBuilder;
-import org.antlr.v4.runtime.CharStream;
-import org.antlr.v4.runtime.CharStreams;
-import org.antlr.v4.runtime.CommonTokenStream;
-import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.ParseTree;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class Main {
+
     private static final String[] TEST_FILES = {
             "src/main/resources/examples/correct/programa1.mc",
             "src/main/resources/examples/correct/programa2.mc",
@@ -28,344 +25,279 @@ public class Main {
     };
 
     public static void main(String[] args) {
-        if (args.length < 1) {
+        if (args.length == 0) {
             printUsage();
             return;
         }
 
-        if (hasArgument(args, "--test")) {
+        if (hasArg(args, "--test")) {
             runTests();
             return;
         }
 
-        String sourceFilePath = args[0];
-        CompilerOptions options = CompilerOptions.fromArgs(args);
+        String file = args[0];
+        CompilerOptions opt = CompilerOptions.from(args);
 
-        CompilationResult result = analyzeFile(sourceFilePath, options);
-        printResultSummary(result);
+        CompilationResult result = analyze(file, opt);
+        printSummary(result);
     }
 
-    private static CompilationResult analyzeFile(String sourceFilePath, CompilerOptions options) {
-        CompilationResult result = new CompilationResult(sourceFilePath);
+    // ================= ANALISIS =================
+
+    private static CompilationResult analyze(String file, CompilerOptions opt) {
+        CompilationResult r = new CompilationResult(file);
 
         try {
-            CharStream input = CharStreams.fromFileName(sourceFilePath);
+            CharStream input = CharStreams.fromFileName(file);
 
             MiniCLexer lexer = new MiniCLexer(input);
-            SyntaxErrorListener lexerErrorListener = new SyntaxErrorListener();
-
-            lexer.removeErrorListeners();
-            lexer.addErrorListener(lexerErrorListener);
+            SyntaxErrorListener lexerErrors = attachErrors(lexer);
 
             CommonTokenStream tokens = new CommonTokenStream(lexer);
             tokens.fill();
 
-            result.lexicalErrors.addAll(getLexicalErrors(tokens, lexerErrorListener));
+            r.lexicalErrors.addAll(collectLexicalErrors(tokens, lexerErrors));
 
-            if (options.showTokens) {
-                printTokens(tokens);
+            if (!r.lexicalErrors.isEmpty()) {
+                r.lexicalSuccess = false;
+                printErrors("ERRORES LEXICOS", r.lexicalErrors);
+                return r;
             }
+            r.lexicalSuccess = true;
 
-            if (options.showLexicalSummary) {
-                LexicalSummary.fromTokens(tokens).print();
-            }
-
-            if (!result.lexicalErrors.isEmpty()) {
-                printErrors("ERRORES LEXICOS", result.lexicalErrors);
-                result.lexicalSuccess = false;
-                return result;
-            }
-
-            result.lexicalSuccess = true;
+            if (opt.showTokens) printTokens(tokens);
+            if (opt.showLexicalSummary) LexicalSummary.fromTokens(tokens).print();
 
             MiniCParser parser = new MiniCParser(tokens);
-            SyntaxErrorListener parserErrorListener = new SyntaxErrorListener();
-
-            parser.removeErrorListeners();
-            parser.addErrorListener(parserErrorListener);
+            SyntaxErrorListener parserErrors = attachErrors(parser);
 
             ParseTree tree = parser.program();
 
-            if (parserErrorListener.hasErrors()) {
-                result.syntaxErrors.addAll(parserErrorListener.getErrors());
-                result.syntaxSuccess = false;
-                printErrors("ERRORES SINTACTICOS", result.syntaxErrors);
-                return result;
+            if (parserErrors.hasErrors()) {
+                r.syntaxErrors.addAll(parserErrors.getErrors());
+                r.syntaxSuccess = false;
+                printErrors("ERRORES SINTACTICOS", r.syntaxErrors);
+                return r;
             }
 
-            result.syntaxSuccess = true;
+            r.syntaxSuccess = true;
 
-            if (options.showTree) {
-                System.out.println();
-                System.out.println("================ PARSE TREE ANTLR ================");
+            if (opt.showTree) {
+                System.out.println("\n=== PARSE TREE ===");
                 System.out.println(tree.toStringTree(parser));
             }
 
-            if (options.showSyntaxSummary) {
-                SyntaxSummaryVisitor syntaxSummaryVisitor = new SyntaxSummaryVisitor();
-                syntaxSummaryVisitor.visit(tree);
-                syntaxSummaryVisitor.print();
+            if (opt.showSyntaxSummary) {
+                SyntaxSummaryVisitor v = new SyntaxSummaryVisitor();
+                v.visit(tree);
+                v.print();
             }
 
-            if (options.showAst) {
-                System.out.println();
-                System.out.println("================ AST / RECORRIDO CON VISITOR ================");
-
-                AstPrinterVisitor astPrinterVisitor = new AstPrinterVisitor();
-                astPrinterVisitor.visit(tree);
-                System.out.print(astPrinterVisitor.getOutput());
+            if (opt.showAst) {
+                System.out.println("\n=== AST ===");
+                AstPrinterVisitor v = new AstPrinterVisitor();
+                v.visit(tree);
+                System.out.print(v.getOutput());
             }
 
-            SymbolTableBuilder symbolTableBuilder = new SymbolTableBuilder();
-            symbolTableBuilder.visit(tree);
+            SymbolTableBuilder st = new SymbolTableBuilder();
+            st.visit(tree);
 
-            result.symbolErrors.addAll(symbolTableBuilder.getErrors());
+            r.symbolErrors.addAll(st.getErrors());
 
-            if (options.showSymbols) {
-                symbolTableBuilder.getSymbolTable().print();
+            if (opt.showSymbols) {
+                st.getSymbolTable().print();
             }
 
-            if (!result.symbolErrors.isEmpty()) {
-                printErrors("ERRORES DE TABLA DE SIMBOLOS", result.symbolErrors);
+            if (!r.symbolErrors.isEmpty()) {
+                printErrors("ERRORES DE SIMBOLOS", r.symbolErrors);
             }
 
-            return result;
+            return r;
 
         } catch (IOException e) {
-            result.readErrors.add("Error: no se pudo leer el archivo " + sourceFilePath);
-            result.readErrors.add(e.getMessage());
-            return result;
+            r.readErrors.add("No se pudo leer: " + file);
+            r.readErrors.add(e.getMessage());
+            return r;
         }
     }
 
-    private static List<String> getLexicalErrors(CommonTokenStream tokens, SyntaxErrorListener lexerErrorListener) {
+    // ================= LEXICAL ERRORS =================
+
+    private static List<String> collectLexicalErrors(CommonTokenStream tokens, SyntaxErrorListener listener) {
         List<String> errors = new ArrayList<>();
 
-        for (Token token : tokens.getTokens()) {
-            if (token.getType() == MiniCLexer.ERROR_CHAR) {
-                errors.add("Error lexico linea " + token.getLine() + ":" + token.getCharPositionInLine()
-                        + " - simbolo no reconocido: " + token.getText());
-            }
+        for (Token t : tokens.getTokens()) {
+            String msg = switch (t.getType()) {
+                case MiniCLexer.ERROR_CHAR ->
+                        "simbolo no reconocido: " + t.getText();
+                case MiniCLexer.UnclosedString ->
+                        "cadena sin cerrar";
+                case MiniCLexer.UnclosedChar ->
+                        "caracter sin cerrar";
+                case MiniCLexer.InvalidCharLiteral ->
+                        "literal char invalido: " + t.getText();
+                case MiniCLexer.UnclosedBlockComment ->
+                        "comentario de bloque sin cerrar";
+                default -> null;
+            };
 
-            if (token.getType() == MiniCLexer.UnclosedString) {
-                errors.add("Error lexico linea " + token.getLine() + ":" + token.getCharPositionInLine()
-                        + " - cadena sin cerrar");
-            }
-
-            if (token.getType() == MiniCLexer.UnclosedChar) {
-                errors.add("Error lexico linea " + token.getLine() + ":" + token.getCharPositionInLine()
-                        + " - caracter sin cerrar");
-            }
-
-            if (token.getType() == MiniCLexer.InvalidCharLiteral) {
-                errors.add("Error lexico linea " + token.getLine() + ":" + token.getCharPositionInLine()
-                        + " - literal char invalido: " + token.getText());
-            }
-
-            if (token.getType() == MiniCLexer.UnclosedBlockComment) {
-                errors.add("Error lexico linea " + token.getLine() + ":" + token.getCharPositionInLine()
-                        + " - comentario de bloque sin cerrar");
+            if (msg != null) {
+                errors.add(formatError("lexico", t, msg));
             }
         }
 
-        if (lexerErrorListener.hasErrors()) {
-            errors.addAll(lexerErrorListener.getErrors());
-        }
-
+        errors.addAll(listener.getErrors());
         return errors;
     }
 
+    private static String formatError(String type, Token t, String msg) {
+        return "Error " + type + " linea " + t.getLine() + ":" +
+                t.getCharPositionInLine() + " - " + msg;
+    }
+
+    // ================= PRINT =================
+
     private static void printTokens(CommonTokenStream tokens) {
-        System.out.println();
-        System.out.println("================ TOKENS ================");
-        System.out.printf("%-22s %-30s %-10s %-10s%n", "TOKEN", "LEXEMA", "LINEA", "COLUMNA");
-        System.out.println("----------------------------------------------------------------------------");
+        System.out.println("\n=== TOKENS ===");
+        System.out.printf("%-20s %-30s %-10s %-10s%n", "TOKEN", "LEXEMA", "LINEA", "COL");
 
-        for (Token token : tokens.getTokens()) {
-            if (token.getType() == Token.EOF) {
-                continue;
-            }
+        for (Token t : tokens.getTokens()) {
+            if (t.getType() == Token.EOF) continue;
 
-            String symbolicName = MiniCLexer.VOCABULARY.getSymbolicName(token.getType());
+            String name = MiniCLexer.VOCABULARY.getSymbolicName(t.getType());
+            if (name == null) name = MiniCLexer.VOCABULARY.getLiteralName(t.getType());
 
-            if (symbolicName == null) {
-                symbolicName = MiniCLexer.VOCABULARY.getLiteralName(token.getType());
-            }
-
-            String lexeme = formatLexeme(token.getText());
-
-            System.out.printf("%-22s %-30s %-10d %-10d%n",
-                    symbolicName, "'" + lexeme + "'", token.getLine(), token.getCharPositionInLine());
+            System.out.printf("%-20s %-30s %-10d %-10d%n",
+                    name, "'" + escape(t.getText()) + "'", t.getLine(), t.getCharPositionInLine());
         }
     }
 
-    private static String formatLexeme(String text) {
-        if (text == null) {
-            return "";
-        }
-
-        String formattedText = text
-                .replace("\\", "\\\\")
-                .replace("\r", "\\r")
+    private static String escape(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
                 .replace("\n", "\\n")
-                .replace("\t", "\\t");
-
-        if (formattedText.length() > 28) {
-            return formattedText.substring(0, 25) + "...";
-        }
-
-        return formattedText;
+                .replace("\t", "\\t")
+                .replace("\r", "\\r");
     }
-
 
     private static void printErrors(String title, List<String> errors) {
-        System.out.println();
-        System.out.println("================ " + title + " ================");
-
-        for (String error : errors) {
-            System.out.println(error);
-        }
+        System.out.println("\n=== " + title + " ===");
+        errors.forEach(System.out::println);
     }
 
-    private static void printResultSummary(CompilationResult result) {
-        System.out.println();
-        System.out.println("================ RESUMEN FINAL ================");
-        System.out.println("Archivo: " + result.filePath);
+    private static void printSummary(CompilationResult r) {
+        System.out.println("\n=== RESUMEN ===");
+        System.out.println("Archivo: " + r.filePath);
 
-        if (!result.readErrors.isEmpty()) {
-            System.out.println("Lectura: error");
-
-            for (String error : result.readErrors) {
-                System.out.println(error);
-            }
-
+        if (!r.readErrors.isEmpty()) {
+            System.out.println("Error de lectura");
+            r.readErrors.forEach(System.out::println);
             return;
         }
 
-        System.out.println("Analisis lexico: " + (result.lexicalSuccess ? "correcto" : "con errores"));
+        System.out.println("Lexico: " + status(r.lexicalSuccess));
+        if (!r.lexicalSuccess) return;
 
-        if (!result.lexicalSuccess) {
-            return;
-        }
+        System.out.println("Sintaxis: " + status(r.syntaxSuccess));
+        if (!r.syntaxSuccess) return;
 
-        System.out.println("Analisis sintactico: " + (result.syntaxSuccess ? "correcto" : "con errores"));
-
-        if (!result.syntaxSuccess) {
-            return;
-        }
-
-        if (result.symbolErrors.isEmpty()) {
-            System.out.println("Tabla de simbolos: generada sin errores");
-        } else {
-            System.out.println("Tabla de simbolos: generada con advertencias/errores");
-        }
+        System.out.println("Simbolos: " +
+                (r.symbolErrors.isEmpty() ? "OK" : "con errores"));
     }
+
+    private static String status(boolean ok) {
+        return ok ? "OK" : "ERROR";
+    }
+
+    // ================= TESTS =================
 
     private static void runTests() {
-        System.out.println();
-        System.out.println("================ EJECUCION DE PRUEBAS ================");
+        System.out.println("\n=== TESTS ===");
 
-        int successCount = 0;
-        int failedCount = 0;
+        CompilerOptions opt = CompilerOptions.none();
 
-        CompilerOptions options = new CompilerOptions();
-        options.showTokens = false;
-        options.showTree = false;
-        options.showAst = false;
-        options.showSymbols = false;
-        options.showLexicalSummary = false;
-        options.showSyntaxSummary = false;
+        int ok = 0, fail = 0;
 
-        for (String testFile : TEST_FILES) {
-            CompilationResult result = analyzeFile(testFile, options);
-            boolean expectedCorrect = testFile.contains("/correct/") || testFile.contains("\\correct\\");
+        for (String file : TEST_FILES) {
+            CompilationResult r = analyze(file, opt);
 
-            boolean passed;
+            boolean expectedOk = file.contains("/correct/");
+            boolean passed = expectedOk
+                    ? r.lexicalSuccess && r.syntaxSuccess
+                    : (!r.lexicalSuccess || !r.syntaxSuccess);
 
-            if (expectedCorrect) {
-                passed = result.readErrors.isEmpty() && result.lexicalSuccess && result.syntaxSuccess;
-            } else {
-                passed = result.readErrors.isEmpty() && (!result.lexicalSuccess || !result.syntaxSuccess);
-            }
+            if (passed) ok++; else fail++;
 
-            if (passed) {
-                successCount++;
-            } else {
-                failedCount++;
-            }
-
-            System.out.printf("%-70s %s%n", testFile, passed ? "OK" : "FALLO");
+            System.out.printf("%-60s %s%n", file, passed ? "OK" : "FAIL");
         }
 
-        System.out.println();
-        System.out.println("Pruebas correctas: " + successCount);
-        System.out.println("Pruebas fallidas: " + failedCount);
+        System.out.println("\nOK: " + ok);
+        System.out.println("FAIL: " + fail);
     }
 
-    private static void printUsage() {
-        System.out.println("Uso:");
-        System.out.println(".\\gradlew.bat run --args=\"ruta/archivo.mc\"");
-        System.out.println(".\\gradlew.bat run --args=\"ruta/archivo.mc --tokens\"");
-        System.out.println(".\\gradlew.bat run --args=\"ruta/archivo.mc --lexical-summary\"");
-        System.out.println(".\\gradlew.bat run --args=\"ruta/archivo.mc --syntax-summary\"");
-        System.out.println(".\\gradlew.bat run --args=\"ruta/archivo.mc --ast\"");
-        System.out.println(".\\gradlew.bat run --args=\"ruta/archivo.mc --symbols\"");
-        System.out.println(".\\gradlew.bat run --args=\"ruta/archivo.mc --tree\"");
-        System.out.println(".\\gradlew.bat run --args=\"ruta/archivo.mc --all\"");
-        System.out.println(".\\gradlew.bat run --args=\"--test\"");
-    }
+    // ================= UTILS =================
 
-    private static boolean hasArgument(String[] args, String expectedArgument) {
-        for (String arg : args) {
-            if (arg.equalsIgnoreCase(expectedArgument)) {
-                return true;
-            }
-        }
-
+    private static boolean hasArg(String[] args, String a) {
+        for (String s : args) if (s.equalsIgnoreCase(a)) return true;
         return false;
     }
 
+    private static SyntaxErrorListener attach(BaseRecognizer r) {
+        SyntaxErrorListener l = new SyntaxErrorListener();
+        r.removeErrorListeners();
+        r.addErrorListener(l);
+        return l;
+    }
+
+    private static void printUsage() {
+        System.out.println("Uso: java Main <archivo.mc> [opciones]");
+        System.out.println("--tokens --tree --ast --symbols --all --test");
+    }
+
+    // ================= OPTIONS =================
+
     private static class CompilerOptions {
-        private boolean showTokens;
-        private boolean showTree;
-        private boolean showAst;
-        private boolean showSymbols;
-        private boolean showLexicalSummary;
-        private boolean showSyntaxSummary;
+        boolean showTokens, showTree, showAst, showSymbols, showLexicalSummary, showSyntaxSummary;
 
-        private static CompilerOptions fromArgs(String[] args) {
-            CompilerOptions options = new CompilerOptions();
+        static CompilerOptions from(String[] args) {
+            CompilerOptions o = new CompilerOptions();
 
-            options.showTokens = hasArgument(args, "--tokens") || hasArgument(args, "--all");
-            options.showTree = hasArgument(args, "--tree") || hasArgument(args, "--all");
-            options.showAst = hasArgument(args, "--ast") || hasArgument(args, "--all");
-            options.showSymbols = hasArgument(args, "--symbols") || hasArgument(args, "--all");
-            options.showLexicalSummary = hasArgument(args, "--lexical-summary") || hasArgument(args, "--all");
-            options.showSyntaxSummary = hasArgument(args, "--syntax-summary") || hasArgument(args, "--all");
+            boolean all = hasArg(args, "--all");
 
-            if (!options.showTokens && !options.showTree && !options.showAst && !options.showSymbols
-                    && !options.showLexicalSummary && !options.showSyntaxSummary) {
-                options.showTokens = true;
-                options.showLexicalSummary = true;
-                options.showSyntaxSummary = true;
-                options.showAst = true;
-                options.showSymbols = true;
+            o.showTokens = all || hasArg(args, "--tokens");
+            o.showTree = all || hasArg(args, "--tree");
+            o.showAst = all || hasArg(args, "--ast");
+            o.showSymbols = all || hasArg(args, "--symbols");
+            o.showLexicalSummary = all || hasArg(args, "--lexical-summary");
+            o.showSyntaxSummary = all || hasArg(args, "--syntax-summary");
+
+            if (!o.showTokens && !o.showTree && !o.showAst && !o.showSymbols
+                    && !o.showLexicalSummary && !o.showSyntaxSummary) {
+                o.showTokens = o.showAst = o.showSymbols = true;
             }
 
-            return options;
+            return o;
+        }
+
+        static CompilerOptions none() {
+            return new CompilerOptions();
         }
     }
 
-    private static class CompilationResult {
-        private final String filePath;
-        private boolean lexicalSuccess;
-        private boolean syntaxSuccess;
-        private final List<String> readErrors = new ArrayList<>();
-        private final List<String> lexicalErrors = new ArrayList<>();
-        private final List<String> syntaxErrors = new ArrayList<>();
-        private final List<String> symbolErrors = new ArrayList<>();
+    // ================= RESULT =================
 
-        private CompilationResult(String filePath) {
+    private static class CompilationResult {
+        String filePath;
+        boolean lexicalSuccess;
+        boolean syntaxSuccess;
+
+        List<String> readErrors = new ArrayList<>();
+        List<String> lexicalErrors = new ArrayList<>();
+        List<String> syntaxErrors = new ArrayList<>();
+        List<String> symbolErrors = new ArrayList<>();
+
+        CompilationResult(String filePath) {
             this.filePath = filePath;
         }
     }
