@@ -1,4 +1,5 @@
 package compiler;
+
 import compiler.analysis.LexicalSummary;
 import compiler.analysis.SyntaxSummaryVisitor;
 import compiler.ast.AstPrinterVisitor;
@@ -15,6 +16,7 @@ import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -84,40 +86,49 @@ public class Main {
         }
 
         if (hasArgument(args, "--test")) {
-            runTests();
+            boolean allPassed = runTests();
+            System.exit(allPassed ? 0 : 1);
             return;
         }
 
-        if (hasArgument(args, "--semantic-test")) {
-            runSemanticTests();
-            return;
-        }
-
-        if (hasArgument(args, "--fase2-test")) {
-            runSemanticTests();
+        if (hasArgument(args, "--semantic-test") || hasArgument(args, "--fase2-test")) {
+            boolean allPassed = runSemanticTests();
+            System.exit(allPassed ? 0 : 1);
             return;
         }
 
         if (hasArgument(args, "--tac-test")) {
-            runTacTests();
+            boolean allPassed = runTacTests();
+            System.exit(allPassed ? 0 : 1);
             return;
         }
 
         if (hasArgument(args, "--tac-opt-test")) {
-            runTacOptTests();
+            boolean allPassed = runTacOptTests();
+            System.exit(allPassed ? 0 : 1);
             return;
         }
 
         if (hasArgument(args, "--mips-test")) {
-            runMipsTests();
+            boolean allPassed = runMipsTests();
+            System.exit(allPassed ? 0 : 1);
             return;
         }
 
-        String sourceFilePath = args[0];
+        String sourceFilePath = firstNonFlag(args);
+        if (sourceFilePath == null) {
+            System.out.println("Error: no se indico un archivo .mc de entrada.\n");
+            printUsage();
+            System.exit(2);
+            return;
+        }
+
         CompilerOptions options = CompilerOptions.fromArgs(args);
 
         CompilationResult result = analyzeFile(sourceFilePath, options);
         printResultSummary(result);
+
+        System.exit(result.isSuccess() ? 0 : 1);
     }
 
     private static CompilationResult analyzeFile(String sourceFilePath, CompilerOptions options) {
@@ -423,7 +434,7 @@ public class Main {
         }
     }
 
-    private static void runTests() {
+    private static boolean runTests() {
         System.out.println();
         System.out.println("================ EJECUCION DE PRUEBAS ================");
 
@@ -465,9 +476,11 @@ public class Main {
         System.out.println();
         System.out.println("Pruebas correctas: " + successCount);
         System.out.println("Pruebas fallidas: " + failedCount);
+
+        return failedCount == 0;
     }
 
-    private static void runSemanticTests() {
+    private static boolean runSemanticTests() {
         System.out.println();
         System.out.println("================ EJECUCION DE PRUEBAS SEMANTICAS ================");
 
@@ -528,9 +541,11 @@ public class Main {
         System.out.println();
         System.out.println("Pruebas semanticas correctas: " + successCount);
         System.out.println("Pruebas semanticas fallidas: " + failedCount);
+
+        return failedCount == 0;
     }
 
-    private static void runTacTests() {
+    private static boolean runTacTests() {
         System.out.println();
         System.out.println("================ EJECUCION DE PRUEBAS TAC ================");
 
@@ -568,9 +583,11 @@ public class Main {
         System.out.println();
         System.out.println("Pruebas TAC correctas: " + successCount);
         System.out.println("Pruebas TAC fallidas: " + failedCount);
+
+        return failedCount == 0;
     }
 
-    private static void runTacOptTests() {
+    private static boolean runTacOptTests() {
         System.out.println();
         System.out.println("================ EJECUCION DE PRUEBAS TAC OPTIMIZADO ================");
 
@@ -608,9 +625,11 @@ public class Main {
         System.out.println();
         System.out.println("Pruebas TAC optimizado correctas: " + successCount);
         System.out.println("Pruebas TAC optimizado fallidas: " + failedCount);
+
+        return failedCount == 0;
     }
 
-    private static void runMipsTests() {
+    private static boolean runMipsTests() {
         System.out.println();
         System.out.println("================ EJECUCION DE PRUEBAS MIPS32 ================");
 
@@ -648,6 +667,8 @@ public class Main {
         System.out.println();
         System.out.println("Pruebas MIPS32 correctas: " + successCount);
         System.out.println("Pruebas MIPS32 fallidas: " + failedCount);
+
+        return failedCount == 0;
     }
 
     private static void printUsage() {
@@ -690,6 +711,29 @@ public class Main {
             if (args[i].equalsIgnoreCase(argumentName)) {
                 return args[i + 1];
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Devuelve el primer argumento que sea una ruta (no una opcion).
+     * Ignora flags con - o -- y salta el valor que sigue a -o.
+     */
+    private static String firstNonFlag(String[] args) {
+        for (int i = 0; i < args.length; i++) {
+            String arg = args[i];
+
+            if (arg.equalsIgnoreCase("-o")) {
+                i++; // saltar el valor de -o (la ruta de salida)
+                continue;
+            }
+
+            if (arg.startsWith("-")) {
+                continue;
+            }
+
+            return arg;
         }
 
         return null;
@@ -758,6 +802,13 @@ public class Main {
 
         private CompilationResult(String filePath) {
             this.filePath = filePath;
+        }
+
+        boolean isSuccess() {
+            return readErrors.isEmpty()
+                    && lexicalSuccess
+                    && syntaxSuccess
+                    && semanticErrors.isEmpty();
         }
     }
 }
