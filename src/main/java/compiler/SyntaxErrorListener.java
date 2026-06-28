@@ -3,6 +3,7 @@ package compiler;
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.RecognitionException;
 import org.antlr.v4.runtime.Recognizer;
+import org.antlr.v4.runtime.Token;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,19 +20,42 @@ public class SyntaxErrorListener extends BaseErrorListener {
                             int charPositionInLine,
                             String msg,
                             RecognitionException e) {
-
-        String symbolText = offendingSymbol != null
-                ? offendingSymbol.toString()
-                : "unknown";
-
-        addError(line, charPositionInLine, symbolText, msg);
+        errors.add("Error sintactico linea " + line + ":" + charPositionInLine
+                + " - " + buildMessage(offendingSymbol, msg));
     }
 
-    private void addError(int line, int column, String symbol, String message) {
-        errors.add(String.format(
-                "Syntax error at line %d, column %d near '%s': %s",
-                line, column, symbol, message
-        ));
+    private String buildMessage(Object offendingSymbol, String msg) {
+        String text = symbolText(offendingSymbol);
+
+        if (text == null) {
+            return msg;
+        }
+
+        return msg + " (cerca de '" + text + "')";
+    }
+
+    private String symbolText(Object offendingSymbol) {
+        if (!(offendingSymbol instanceof Token token)) {
+            return null;
+        }
+
+        if (token.getType() == Token.EOF) {
+            return "<EOF>";
+        }
+
+        return escape(token.getText());
+    }
+
+    private String escape(String text) {
+        if (text == null) {
+            return "";
+        }
+
+        return text
+                .replace("\\", "\\\\")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n")
+                .replace("\t", "\\t");
     }
 
     public boolean hasErrors() {
