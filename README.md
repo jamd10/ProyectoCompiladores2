@@ -1,76 +1,239 @@
-# Mini-C Compiler
+from pathlib import Path
 
-This project implements a compiler for Mini-C, a subset of the C programming language, using ANTLR4 and Java. The compiler translates Mini-C code into MIPS32 assembly code, adhering to the ABI O32 conventions.
+readme = r"""# Proyecto Compiladores II - Mini-C Compiler
 
-## Project Structure
+## Descripcion
 
+Este proyecto implementa la Fase 1 y el inicio de la Fase 2 de un compilador para el lenguaje Mini-C usando ANTLR4 y Java.
+
+La fase actual incluye el front-end del compilador y un analisis semantico basico.
+
+El proyecto incluye:
+
+* Analisis lexico.
+* Analisis sintactico.
+* Gramatica ANTLR4 en `MiniC.g4`.
+* Lectura de archivos `.mc` por consola.
+* Impresion de tokens.
+* Resumen lexico.
+* Resumen sintactico.
+* Parse tree generado por ANTLR.
+* Recorrido del arbol usando Visitor.
+* AST textual generado desde el Visitor.
+* Tabla de simbolos inicial.
+* Analisis semantico basico.
+* Reporte de errores con linea y columna.
+* Casos de prueba lexicos, sintacticos y semanticos.
+
+## Tecnologias utilizadas
+
+* Java
+* Gradle
+* ANTLR4
+* IntelliJ IDEA
+
+## Estructura del proyecto
+
+```text
+Proyecto_compiladores_II_V2/
+├─ build.gradle
+├─ settings.gradle
+├─ gradlew
+├─ gradlew.bat
+└─ src/
+   └─ main/
+      ├─ antlr/
+      │  └─ MiniC.g4
+      ├─ java/
+      │  └─ compiler/
+      │     ├─ Main.java
+      │     ├─ SyntaxErrorListener.java
+      │     ├─ analysis/
+      │     │  ├─ LexicalSummary.java
+      │     │  └─ SyntaxSummaryVisitor.java
+      │     ├─ ast/
+      │     │  └─ AstPrinterVisitor.java
+      │     └─ semantic/
+      │        ├─ SemanticAnalyzer.java
+      │        ├─ SymbolEntry.java
+      │        ├─ SymbolTable.java
+      │        └─ SymbolTableBuilder.java
+      └─ resources/
+         └─ examples/
+            ├─ correct/
+            │  ├─ programa1.mc
+            │  ├─ programa2.mc
+            │  ├─ programa3.mc
+            │  └─ programa4.mc
+            ├─ errors/
+            │  ├─ error_lexico.mc
+            │  ├─ error_sintactico1.mc
+            │  ├─ error_sintactico2.mc
+            │  └─ error_comentario_bloque.mc
+            └─ semantic/
+               ├─ correct_semantico1.mc
+               ├─ correct_semantico2.mc
+               ├─ error_variable_no_declarada.mc
+               ├─ error_redeclaracion.mc
+               ├─ error_funcion_no_declarada.mc
+               ├─ error_parametros.mc
+               ├─ error_tipo_asignacion.mc
+               ├─ error_indice_arreglo.mc
+               ├─ error_return_tipo.mc
+               ├─ error_void_retorna_valor.mc
+               ├─ error_funcion_sin_return.mc
+               ├─ error_parametro_tipo.mc
+               ├─ error_variable_como_funcion.mc
+               ├─ error_funcion_como_variable.mc
+               └─ error_demasiados_indices.mc
+## Codigo intermedio TAC
+
+El proyecto tambien incluye una etapa inicial de generacion de codigo intermedio TAC, tambien conocido como codigo de tres direcciones.
+
+Esta etapa se implementa mediante las clases:
+
+```text
+src/main/java/compiler/ir/TacInstruction.java
+src/main/java/compiler/ir/TacGenerator.java
 ```
-mini-c-compiler
-├── src
-│   ├── main
-│   │   ├── java
-│   │   │   ├── compiler
-│   │   │   │   ├── Main.java               # Entry point of the compiler application
-│   │   │   │   ├── MiniC.g4                # ANTLR4 grammar definition for Mini-C
-│   │   │   │   ├── ast
-│   │   │   │   │   └── AstNodes.java       # Abstract Syntax Tree (AST) nodes
-│   │   │   │   ├── parser
-│   │   │   │   │   └── MiniCParserListener.java # Listener for handling parse tree events
-│   │   │   │   ├── semantic
-│   │   │   │   │   ├── SymbolTable.java     # Manages the symbol table
-│   │   │   │   │   └── TypeChecker.java     # Performs semantic analysis
-│   │   │   │   ├── ir
-│   │   │   │   │   └── TacGenerator.java    # Generates intermediate representation (IR)
-│   │   │   │   └── backend
-│   │   │   │       └── MipsGenerator.java    # Translates TAC to MIPS32 assembly
-│   │   └── resources
-│   │       └── examples
-│   │           ├── correct                  # Example Mini-C programs (correct)
-│   │           └── errors                   # Example Mini-C programs (with errors)
-│   └── test
-│       └── java
-│           └── compiler
-│               ├── LexerParserTest.java     # Unit tests for lexer and parser
-│               └── SemanticTest.java        # Unit tests for semantic analysis
-├── build.gradle                              # Gradle build configuration
-├── settings.gradle                           # Gradle settings
-└── README.md                                 # Project documentation
+
+## Optimizacion de codigo intermedio TAC
+
+El proyecto incluye una etapa inicial de optimizacion sobre el codigo intermedio TAC. Esta etapa se implementa mediante la clase:
+
+```text
+src/main/java/compiler/ir/TacOptimizer.java
 ```
 
-## Features
+El optimizador recibe la lista de instrucciones TAC generadas por `TacGenerator` y produce una version optimizada del codigo intermedio.
 
-- **Lexical Analysis**: Tokenizes Mini-C source code using ANTLR4.
-- **Syntax Analysis**: Parses tokens and constructs an Abstract Syntax Tree (AST).
-- **Semantic Analysis**: Checks for type compatibility and manages variable scopes.
-- **Intermediate Representation**: Generates three-address code (TAC) from the AST.
-- **Code Generation**: Translates TAC into MIPS32 assembly code for execution in QtSPIM/MARS.
-- **Error Handling**: Reports lexical, syntactic, and semantic errors with detailed messages.
+Actualmente se implementan dos optimizaciones principales:
 
-## Setup Instructions
+```text
+constant folding
+constant propagation
+```
 
-1. **Clone the repository**:
-   ```
-   git clone <repository-url>
-   cd mini-c-compiler
-   ```
+### Constant folding
 
-2. **Build the project**:
-   Ensure you have Gradle installed, then run:
-   ```
-   ./gradlew build
-   ```
+El constant folding permite evaluar operaciones constantes durante la compilacion, sin esperar a la ejecucion del programa.
 
-3. **Run the compiler**:
-   Use the following command to compile a Mini-C program:
-   ```
-   java -cp build/libs/mini-c-compiler.jar compiler.Main <input.mc> -S -o <output.s>
-   ```
+Por ejemplo, el TAC original:
 
-## Usage
+```text
+t1 = 3 * 4
+```
 
-- Place your Mini-C source files in the `src/main/resources/examples/correct` or `src/main/resources/examples/errors` directories for testing.
-- Use the provided unit tests in `src/test/java/compiler` to verify the functionality of the compiler components.
+se optimiza como:
 
-## Examples
+```text
+t1 = 12
+```
 
-Refer to the `examples` directory for sample Mini-C programs and their expected outputs.
+Tambien se optimizan comparaciones constantes:
+
+```text
+t5 = 8 > 3
+```
+
+se convierte en:
+
+```text
+t5 = true
+```
+
+### Constant propagation
+
+El constant propagation permite reutilizar valores constantes ya calculados y propagarlos en instrucciones posteriores.
+
+Por ejemplo, el TAC original:
+
+```text
+t1 = 12
+t2 = 2 + t1
+x = t2
+```
+
+se optimiza como:
+
+```text
+t1 = 12
+t2 = 14
+x = 14
+```
+
+Esto permite reducir operaciones innecesarias y simplificar el codigo intermedio antes de una futura generacion de codigo ensamblador.
+
+## Ejecutar TAC optimizado
+
+Para generar el TAC normal y el TAC optimizado de un archivo Mini-C, se usa:
+
+```powershell
+.\gradlew.bat run --args="src/main/resources/examples/correct/programa_optimizacion.mc --tac-opt"
+```
+
+Ejemplo de TAC normal:
+
+```text
+func main:
+decl int x
+t1 = 3 * 4
+t2 = 2 + t1
+x = t2
+decl int y
+t3 = 10 - 5
+t4 = t3 * 2
+y = t4
+decl bool z
+t5 = 8 > 3
+z = t5
+t6 = x + y
+return t6
+endfunc main
+```
+
+Ejemplo de TAC optimizado:
+
+```text
+func main:
+decl int x
+t1 = 12
+t2 = 14
+x = 14
+decl int y
+t3 = 5
+t4 = 10
+y = 10
+decl bool z
+t5 = true
+z = true
+t6 = 24
+return 24
+endfunc main
+```
+
+## Pruebas de TAC optimizado
+
+El proyecto incluye un comando automatico para probar la generacion de TAC optimizado:
+
+```powershell
+.\gradlew.bat run --args="--tac-opt-test"
+```
+
+Este comando ejecuta el archivo de prueba de optimizacion, valida que pase el analisis lexico, sintactico y semantico, y luego genera tanto el TAC normal como el TAC optimizado.
+
+El resultado esperado es:
+
+```text
+Pruebas TAC optimizado correctas: 1
+Pruebas TAC optimizado fallidas: 0
+BUILD SUCCESSFUL
+```
+
+Con esto, el proyecto demuestra que no solo genera codigo intermedio, sino que tambien aplica optimizaciones basicas antes de una futura etapa de generacion de codigo MIPS32.
+
+Generacion de codigo intermedio TAC.
+Optimizacion de TAC.
+Constant folding.
+Constant propagation.
+Pruebas automaticas para TAC optimizado.

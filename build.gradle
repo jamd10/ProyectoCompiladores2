@@ -1,19 +1,41 @@
 plugins {
     id 'java'
+    id 'antlr'
+    id 'application'
 }
 
-group 'com.example'
-version '1.0-SNAPSHOT'
+group = 'compiler'
+version = '1.0'
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    implementation 'org.antlr:antlr4:4.9.2'
-    testImplementation 'junit:junit:4.13.2'
+    antlr 'org.antlr:antlr4:4.13.2'
+    implementation 'org.antlr:antlr4-runtime:4.13.2'
 }
 
-test {
-    useJUnitPlatform()
+application {
+    mainClass = 'compiler.Main'
+}
+
+generateGrammarSource {
+    arguments += ['-visitor', '-listener', '-long-messages', '-package', 'compiler.parser']
+    outputDirectory = file("$buildDir/generated-src/antlr/main/compiler/parser")
+}
+
+sourceSets.main.java.srcDir("$buildDir/generated-src/antlr/main")
+
+compileJava {
+    dependsOn generateGrammarSource
+    options.encoding = 'UTF-8'
+}
+
+// tarea para abrir la interfaz grafica del compilador
+tasks.register('runGui', JavaExec) {
+    group = 'application'
+    description = 'abre la interfaz grafica de Mini-C Compiler Studio'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass.set('compiler.gui.GuiMain')
 }
